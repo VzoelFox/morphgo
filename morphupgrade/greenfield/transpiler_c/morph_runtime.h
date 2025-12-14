@@ -145,6 +145,9 @@ FoxVal* Fox_GetAttr(FoxVal* obj, const char* name);
 void Fox_SetAttr(FoxVal* obj, const char* name, FoxVal* val);
 FoxVal* Fox_Call(FoxVal* callable, int argc, FoxVal** argv);
 
+// --- Checks ---
+bool Fox_IsInstance(FoxVal* obj, FoxVal* klass);
+
 // --- Generic Access ---
 FoxVal* Fox_GetItem(FoxVal* obj, FoxVal* key);
 void Fox_SetItem(FoxVal* obj, FoxVal* key, FoxVal* val);

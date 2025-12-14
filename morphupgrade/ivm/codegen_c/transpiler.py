@@ -186,6 +186,53 @@ class CTranspiler:
         self.indent_level -= 1
         self.write('}')
 
+    def visit_Jodohkan(self, node):
+        expr_val = self.visit_expression(node.ekspresi)
+        val_var = self.get_temp_var()
+        self.write(f'FoxVal* {val_var} = {expr_val};')
+
+        first = True
+        for kasus in node.kasus:
+             pola = kasus.pola
+             cond = self._compile_pattern_check(pola, val_var)
+
+             if kasus.jaga:
+                 guard_expr = self.visit_expression(kasus.jaga)
+                 cond = f"({cond}) && Fox_IsTrue({guard_expr})"
+
+             prefix = "if" if first else "else if"
+             self.write(f'{prefix} ({cond}) {{')
+             self.indent_level += 1
+
+             self._compile_pattern_bind(pola, val_var)
+             self.visit(kasus.badan)
+
+             self.indent_level -= 1
+             self.write('}')
+             first = False
+
+    def _compile_pattern_check(self, pola, val_var):
+        name = pola.__class__.__name__
+        if name == 'PolaLiteral':
+             lit_val = self.visit_expression(pola.nilai)
+             return f"Fox_IsTrue(Fox_Eq({val_var}, {lit_val}))"
+        elif name == 'PolaWildcard':
+             return "true"
+        elif name == 'PolaIkatanVariabel':
+             return "true"
+        elif name == 'PolaVarian':
+             class_name = pola.nama.nilai
+             return f"Fox_IsInstance({val_var}, {class_name})"
+        return "false"
+
+    def _compile_pattern_bind(self, pola, val_var):
+        name = pola.__class__.__name__
+        if name == 'PolaIkatanVariabel':
+             var_name = pola.token.nilai
+             self.locals.add(var_name)
+             self.write(f'FoxVal* {var_name} = {val_var};')
+             self.write(f'Fox_IncRef({var_name});')
+
     def visit_PernyataanEkspresi(self, node):
         expr = self.visit_expression(node.ekspresi)
         self.write(f"{expr};")

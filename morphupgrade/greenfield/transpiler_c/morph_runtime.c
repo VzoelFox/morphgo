@@ -352,7 +352,6 @@ FoxVal* Fox_GetAttr(FoxVal* obj, const char* name) {
             bm->instance = i;
             Fox_IncRef(obj);
             bm->func = (FoxFunction*)method;
-            // method ref handled by Get
             return (FoxVal*)bm;
         }
 
@@ -395,6 +394,13 @@ FoxVal* Fox_Call(FoxVal* callable, int argc, FoxVal** argv) {
     }
 
     return Fox_Nil;
+}
+
+bool Fox_IsInstance(FoxVal* obj, FoxVal* klass) {
+    if (!obj || !klass) return false;
+    if (obj->type != FOX_INSTANCE) return false;
+    if (klass->type != FOX_CLASS) return false;
+    return ((FoxInstance*)obj)->klass == (FoxClass*)klass;
 }
 
 // --- Generic Access ---
