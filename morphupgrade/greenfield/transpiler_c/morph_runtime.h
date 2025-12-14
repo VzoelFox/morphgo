@@ -50,6 +50,21 @@ typedef struct {
     size_t capacity;
 } FoxList;
 
+// Hash Map Entry
+typedef struct FoxMapEntry {
+    char* key; // Optimization: String keys only for now (common in compiler)
+               // TODO: Support arbitrary keys
+    FoxVal* value;
+    struct FoxMapEntry* next;
+} FoxMapEntry;
+
+typedef struct {
+    FoxVal base;
+    FoxMapEntry** buckets;
+    size_t bucket_count;
+    size_t item_count;
+} FoxDict;
+
 // --- Global Constants ---
 extern FoxVal* Fox_Nil;
 extern FoxVal* Fox_True;
@@ -65,6 +80,8 @@ void Fox_Print(FoxVal* val);
 void Fox_DecRef(FoxVal* val);
 void Fox_IncRef(FoxVal* val);
 bool Fox_IsTrue(FoxVal* val);
+bool Fox_IsString(FoxVal* val);
+char* Fox_AsCString(FoxVal* val);
 
 // --- Arithmetic ---
 FoxVal* Fox_Add(FoxVal* a, FoxVal* b);
@@ -81,5 +98,14 @@ FoxVal* Fox_Gt(FoxVal* a, FoxVal* b);
 FoxVal* Fox_List_New(size_t capacity);
 void Fox_List_Append(FoxVal* list, FoxVal* item);
 FoxVal* Fox_List_Get(FoxVal* list, int index);
+
+// --- Dict API ---
+FoxVal* Fox_Dict_New();
+void Fox_Dict_Set(FoxVal* dict, FoxVal* key, FoxVal* value);
+FoxVal* Fox_Dict_Get(FoxVal* dict, FoxVal* key);
+
+// --- Generic Access ---
+FoxVal* Fox_GetItem(FoxVal* obj, FoxVal* key);
+void Fox_SetItem(FoxVal* obj, FoxVal* key, FoxVal* val);
 
 #endif

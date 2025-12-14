@@ -117,6 +117,13 @@ class CTranspiler:
                  self.write(f'FoxVal* {var_name} = Fox_Nil;')
 
     def visit_Assignment(self, node):
+        if node.target.__class__.__name__ == 'Akses':
+            obj = self.visit_expression(node.target.objek)
+            key = self.visit_expression(node.target.kunci)
+            val = self.visit_expression(node.nilai)
+            self.write(f'Fox_SetItem({obj}, {key}, {val});')
+            return
+
         var_name = node.target.nama
         val_expr = self.visit_expression(node.nilai)
         temp = self.get_temp_var()
@@ -189,6 +196,20 @@ class CTranspiler:
             val = self.visit_expression(elem)
             self.write(f'Fox_List_Append({temp_list}, {val});')
         return temp_list
+
+    def visit_expr_Kamus(self, node):
+        temp_dict = self.get_temp_var()
+        self.write(f'FoxVal* {temp_dict} = Fox_Dict_New();')
+        for k, v in node.pasangan:
+            key_expr = self.visit_expression(k)
+            val_expr = self.visit_expression(v)
+            self.write(f'Fox_Dict_Set({temp_dict}, {key_expr}, {val_expr});')
+        return temp_dict
+
+    def visit_expr_Akses(self, node):
+        obj = self.visit_expression(node.objek)
+        key = self.visit_expression(node.kunci)
+        return f"Fox_GetItem({obj}, {key})"
 
     def visit_expr_FoxBinary(self, node):
         left = self.visit_expression(node.kiri)
