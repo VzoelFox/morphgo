@@ -1,0 +1,390 @@
+# greenfield/kompiler/ekspresi.fox
+# Modul Ekspresi: Kompilasi node ekspresi
+
+ambil_semua "greenfield/kompiler/generator.fox" sebagai Gen
+dari "greenfield/cotc/stdlib/core.fox" ambil_sebagian panjang, tambah, teks
+
+fungsi kunjungi_PernyataanEkspresi(ctx, node) maka
+    ctx._kunjungi(node.ekspresi)
+    Gen.emit(ctx, ctx.Op["POP"], nil)
+akhir
+
+fungsi kunjungi_Konstanta(ctx, node) maka
+    Gen.emit(ctx, ctx.Op["PUSH_CONST"], node.nilai)
+akhir
+
+fungsi kunjungi_KonversiTeks(ctx, node) maka
+    ctx._kunjungi(node.ekspresi)
+    Gen.emit(ctx, ctx.Op["STR"], nil)
+akhir
+
+fungsi kunjungi_Identitas(ctx, node) maka
+    biar jenis = Gen.dapatkan_jenis_var(ctx, node.nama)
+
+    jika jenis == "LOCAL" maka
+        Gen.emit(ctx, ctx.Op["LOAD_LOCAL"], node.nama)
+    lain
+        jika jenis == "CELL" maka
+            Gen.emit(ctx, ctx.Op["LOAD_DEREF"], node.nama)
+        lain
+            jika jenis == "FREE" maka
+                Gen.emit(ctx, ctx.Op["LOAD_DEREF"], node.nama)
+            lain
+                Gen.emit(ctx, ctx.Op["LOAD_VAR"], node.nama)
+            akhir
+        akhir
+    akhir
+akhir
+
+fungsi kunjungi_Pengelompokan(ctx, node) maka
+    ctx._kunjungi(node.ekspresi)
+akhir
+
+fungsi kunjungi_Ini(ctx, node) maka
+    Gen.emit(ctx, ctx.Op["LOAD_LOCAL"], "ini")
+akhir
+
+fungsi kunjungi_Induk(ctx, node) maka
+    Gen.emit(ctx, ctx.Op["LOAD_LOCAL"], "ini")
+    Gen.emit(ctx, ctx.Op["LOAD_SUPER_METHOD"], node.metode.nilai)
+akhir
+
+fungsi kunjungi_AmbilProperti(ctx, node) maka
+    ctx._kunjungi(node.objek)
+    Gen.emit(ctx, ctx.Op["LOAD_ATTR"], node.nama.nilai)
+akhir
+
+fungsi kunjungi_Akses(ctx, node) maka
+    ctx._kunjungi(node.objek)
+    ctx._kunjungi(node.kunci)
+    Gen.emit(ctx, ctx.Op["LOAD_INDEX"], nil)
+akhir
+
+fungsi kunjungi_EkspresiIrisan(ctx, node) maka
+    ctx._kunjungi(node.objek)
+
+    jika node.awal != nil maka
+        ctx._kunjungi(node.awal)
+    lain
+        Gen.emit(ctx, ctx.Op["PUSH_CONST"], nil)
+    akhir
+
+    jika node.batas_akhir != nil maka
+        ctx._kunjungi(node.batas_akhir)
+    lain
+        Gen.emit(ctx, ctx.Op["PUSH_CONST"], nil)
+    akhir
+
+    Gen.emit(ctx, ctx.Op["SLICE"], nil)
+akhir
+
+fungsi kunjungi_Daftar(ctx, node) maka
+    # [e1, e2, ...]
+    biar i = 0
+    selama i < panjang(node.elemen) maka
+        ctx._kunjungi(node.elemen[i])
+        ubah i = i + 1
+    akhir
+    Gen.emit(ctx, ctx.Op["BUILD_LIST"], panjang(node.elemen))
+akhir
+
+fungsi kunjungi_Kamus(ctx, node) maka
+    # { k1: v1, k2: v2 }
+    biar i = 0
+    selama i < panjang(node.pasangan) maka
+        biar pair = node.pasangan[i]
+        ctx._kunjungi(pair[0]) # Kunci
+        ctx._kunjungi(pair[1]) # Nilai
+        ubah i = i + 1
+    akhir
+    Gen.emit(ctx, ctx.Op["BUILD_DICT"], panjang(node.pasangan))
+akhir
+
+fungsi kunjungi_Ternary(ctx, node) maka
+    # kondisi ? benar : salah
+    ctx._kunjungi(node.kondisi)
+    biar jump_else = Gen.emit_jump(ctx, ctx.Op["JMP_IF_FALSE"])
+
+    ctx._kunjungi(node.expr_benar)
+    biar jump_end = Gen.emit_jump(ctx, ctx.Op["JMP"])
+
+    Gen.patch_jump(ctx, jump_else, nil)
+    ctx._kunjungi(node.expr_salah)
+
+    Gen.patch_jump(ctx, jump_end, nil)
+akhir
+
+fungsi kunjungi_FoxBinary(ctx, node) maka
+    ctx._kunjungi(node.kiri)
+    ctx._kunjungi(node.kanan)
+    biar op_sym = node.op.nilai
+
+    jika op_sym == "+" maka
+        Gen.emit(ctx, ctx.Op["ADD"], nil)
+    lain
+        jika op_sym == "-" maka
+            Gen.emit(ctx, ctx.Op["SUB"], nil)
+        lain
+            jika op_sym == "*" maka
+                Gen.emit(ctx, ctx.Op["MUL"], nil)
+            lain
+                jika op_sym == "/" maka
+                    Gen.emit(ctx, ctx.Op["DIV"], nil)
+                lain
+                jika op_sym == "%" maka
+                    Gen.emit(ctx, ctx.Op["MOD"], nil)
+                lain
+                    jika op_sym == ">" maka
+                        Gen.emit(ctx, ctx.Op["GT"], nil)
+                    lain
+                        jika op_sym == "<" maka
+                            Gen.emit(ctx, ctx.Op["LT"], nil)
+                        lain
+                            jika op_sym == "==" maka
+                                Gen.emit(ctx, ctx.Op["EQ"], nil)
+                            lain
+                                jika op_sym == "!=" maka
+                                    Gen.emit(ctx, ctx.Op["NEQ"], nil)
+                                lain
+                                    jika op_sym == ">=" maka
+                                        Gen.emit(ctx, ctx.Op["GTE"], nil)
+                                    lain
+                                        jika op_sym == "<=" maka
+                                            Gen.emit(ctx, ctx.Op["LTE"], nil)
+                                        lain
+                                            jika op_sym == "dan" maka
+                                                Gen.emit(ctx, ctx.Op["AND"], nil)
+                                            lain
+                                                jika op_sym == "atau" maka
+                                                    Gen.emit(ctx, ctx.Op["OR"], nil)
+                                                lain
+                                                    jika op_sym == "&" maka
+                                                        Gen.emit(ctx, ctx.Op["BIT_AND"], nil)
+                                                    lain
+                                                        jika op_sym == "|" maka
+                                                            Gen.emit(ctx, ctx.Op["BIT_OR"], nil)
+                                                        lain
+                                                            jika op_sym == "^" maka
+                                                                Gen.emit(ctx, ctx.Op["BIT_XOR"], nil)
+                                                            lain
+                                                                jika op_sym == "<<" maka
+                                                                    Gen.emit(ctx, ctx.Op["LSHIFT"], nil)
+                                                                lain
+                                                                    jika op_sym == ">>" maka
+                                                                        Gen.emit(ctx, ctx.Op["RSHIFT"], nil)
+                                                                    lain
+                                                                        tulis("[Kompiler] Operator tidak dikenal: " + teks(op_sym))
+                                                                    akhir
+                                                                akhir
+                                                            akhir
+                                                        akhir
+                                                    akhir
+                                                akhir
+                                            akhir
+                                        akhir
+                                    akhir
+                                akhir
+                            akhir
+                        akhir
+                    akhir
+                akhir
+            akhir
+        akhir
+        akhir
+    akhir
+akhir
+
+fungsi kunjungi_FoxUnary(ctx, node) maka
+    ctx._kunjungi(node.kanan)
+    biar op_sym = node.op.nilai
+
+    jika op_sym == "tidak" maka
+        Gen.emit(ctx, ctx.Op["NOT"], nil)
+    lain
+        jika op_sym == "-" maka
+            Gen.emit(ctx, ctx.Op["PUSH_CONST"], -1)
+            Gen.emit(ctx, ctx.Op["MUL"], nil)
+        lain
+            jika op_sym == "~" maka
+                Gen.emit(ctx, ctx.Op["BIT_NOT"], nil)
+            lain
+                tulis("[Kompiler] Unary operator tidak dikenal: " + op_sym)
+            akhir
+        akhir
+    akhir
+akhir
+
+fungsi kunjungi_PanggilFungsi(ctx, node) maka
+    # Cek Intrinsik
+    biar tipe_callee = Gen.dapatkan_tipe(node.callee)
+    jika tipe_callee == "Identitas" maka
+        biar nama_fungsi = node.callee.nama
+
+        jika nama_fungsi == "bekukan" maka
+            # bekukan(nilai) -> YIELD
+            ubah ctx.is_generator = benar
+            jika panjang(node.argumen) > 0 maka
+                ctx._kunjungi(node.argumen[0])
+            lain
+                Gen.emit(ctx, ctx.Op["PUSH_CONST"], nil)
+            akhir
+            Gen.emit(ctx, ctx.Op["YIELD"], nil)
+            kembali nil
+        akhir
+
+        jika nama_fungsi == "lanjut" maka
+            # lanjut(generator) -> RESUME
+            jika panjang(node.argumen) > 0 maka
+                ctx._kunjungi(node.argumen[0])
+                Gen.emit(ctx, ctx.Op["RESUME"], nil)
+            lain
+                tulis("[Kompiler] Error: 'lanjut' butuh argumen generator.")
+            akhir
+            kembali nil
+        akhir
+
+        jika nama_fungsi == "panjang" maka
+            # panjang(obj) -> LEN
+            jika panjang(node.argumen) > 0 maka
+                ctx._kunjungi(node.argumen[0])
+                Gen.emit(ctx, ctx.Op["LEN"], nil)
+            lain
+                tulis("[Kompiler] Error: 'panjang' butuh argumen.")
+            akhir
+            kembali nil
+        akhir
+
+        jika nama_fungsi == "tipe_objek" maka
+            # tipe_objek(obj) -> TYPE
+            ctx._kunjungi(node.argumen[0])
+            Gen.emit(ctx, ctx.Op["TYPE"], nil)
+            kembali nil
+        akhir
+
+        # --- String Intrinsics ---
+        jika nama_fungsi == "_intrinsik_str_kecil" maka
+            ctx._kunjungi(node.argumen[0])
+            Gen.emit(ctx, ctx.Op["STR_LOWER"], nil)
+            kembali nil
+        akhir
+
+        jika nama_fungsi == "_intrinsik_str_besar" maka
+            ctx._kunjungi(node.argumen[0])
+            Gen.emit(ctx, ctx.Op["STR_UPPER"], nil)
+            kembali nil
+        akhir
+
+        jika nama_fungsi == "_intrinsik_str_temukan" maka
+            # (haystack, needle)
+            ctx._kunjungi(node.argumen[0])
+            ctx._kunjungi(node.argumen[1])
+            Gen.emit(ctx, ctx.Op["STR_FIND"], nil)
+            kembali nil
+        akhir
+
+        jika nama_fungsi == "_intrinsik_str_ganti" maka
+            # (haystack, old, new)
+            ctx._kunjungi(node.argumen[0])
+            ctx._kunjungi(node.argumen[1])
+            ctx._kunjungi(node.argumen[2])
+            Gen.emit(ctx, ctx.Op["STR_REPLACE"], nil)
+            kembali nil
+        akhir
+
+        # --- System Intrinsics ---
+        jika nama_fungsi == "_sys_waktu" maka
+            Gen.emit(ctx, ctx.Op["SYS_TIME"], nil)
+            kembali nil
+        akhir
+        jika nama_fungsi == "_sys_tidur" maka
+            ctx._kunjungi(node.argumen[0])
+            Gen.emit(ctx, ctx.Op["SYS_SLEEP"], nil)
+            kembali nil
+        akhir
+        jika nama_fungsi == "_sys_platform" maka
+            Gen.emit(ctx, ctx.Op["SYS_PLATFORM"], nil)
+            kembali nil
+        akhir
+
+        # --- Network Intrinsics ---
+        jika nama_fungsi == "_net_socket" maka
+            ctx._kunjungi(node.argumen[0])
+            ctx._kunjungi(node.argumen[1])
+            Gen.emit(ctx, ctx.Op["NET_SOCKET_NEW"], nil)
+            kembali nil
+        akhir
+        jika nama_fungsi == "_net_konek" maka
+            ctx._kunjungi(node.argumen[0])
+            ctx._kunjungi(node.argumen[1])
+            ctx._kunjungi(node.argumen[2])
+            Gen.emit(ctx, ctx.Op["NET_CONNECT"], nil)
+            kembali nil
+        akhir
+        jika nama_fungsi == "_net_kirim" maka
+            ctx._kunjungi(node.argumen[0])
+            ctx._kunjungi(node.argumen[1])
+            Gen.emit(ctx, ctx.Op["NET_SEND"], nil)
+            kembali nil
+        akhir
+        jika nama_fungsi == "_net_terima" maka
+            ctx._kunjungi(node.argumen[0])
+            ctx._kunjungi(node.argumen[1])
+            Gen.emit(ctx, ctx.Op["NET_RECV"], nil)
+            kembali nil
+        akhir
+        jika nama_fungsi == "_net_tutup" maka
+            ctx._kunjungi(node.argumen[0])
+            Gen.emit(ctx, ctx.Op["NET_CLOSE"], nil)
+            kembali nil
+        akhir
+
+        # --- File I/O Intrinsics ---
+        jika nama_fungsi == "_io_buka" maka
+            ctx._kunjungi(node.argumen[0])
+            ctx._kunjungi(node.argumen[1])
+            Gen.emit(ctx, ctx.Op["IO_OPEN"], nil)
+            kembali nil
+        akhir
+        jika nama_fungsi == "_io_baca" maka
+            ctx._kunjungi(node.argumen[0])
+            ctx._kunjungi(node.argumen[1])
+            Gen.emit(ctx, ctx.Op["IO_READ"], nil)
+            kembali nil
+        akhir
+        jika nama_fungsi == "_io_tulis" maka
+            ctx._kunjungi(node.argumen[0])
+            ctx._kunjungi(node.argumen[1])
+            Gen.emit(ctx, ctx.Op["IO_WRITE"], nil)
+            kembali nil
+        akhir
+        jika nama_fungsi == "_io_tutup" maka
+            ctx._kunjungi(node.argumen[0])
+            Gen.emit(ctx, ctx.Op["IO_CLOSE"], nil)
+            kembali nil
+        akhir
+        jika nama_fungsi == "_io_ada" maka
+            ctx._kunjungi(node.argumen[0])
+            Gen.emit(ctx, ctx.Op["IO_EXISTS"], nil)
+            kembali nil
+        akhir
+        jika nama_fungsi == "_io_hapus" maka
+            ctx._kunjungi(node.argumen[0])
+            Gen.emit(ctx, ctx.Op["IO_DELETE"], nil)
+            kembali nil
+        akhir
+        jika nama_fungsi == "_io_daftar" maka
+            ctx._kunjungi(node.argumen[0])
+            Gen.emit(ctx, ctx.Op["IO_LIST"], nil)
+            kembali nil
+        akhir
+    akhir
+
+    # Panggilan Fungsi Biasa
+    ctx._kunjungi(node.callee)
+    biar i = 0
+    selama i < panjang(node.argumen) maka
+        ctx._kunjungi(node.argumen[i])
+        ubah i = i + 1
+    akhir
+    Gen.emit(ctx, ctx.Op["CALL"], panjang(node.argumen))
+akhir

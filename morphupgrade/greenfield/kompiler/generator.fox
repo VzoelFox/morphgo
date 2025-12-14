@@ -1,0 +1,124 @@
+# greenfield/kompiler/generator.fox
+# Modul Generator: Helper untuk emisi bytecode dan manajemen scope
+
+dari "greenfield/cotc/stdlib/core.fox" ambil_sebagian panjang, tambah, tipe_objek, teks, tulis
+
+# === Manajemen Scope ===
+
+fungsi tambah_lokal(ctx, nama) maka
+    jika panjang(ctx.lokal_scope) > 0 maka
+            biar top_scope = ctx.lokal_scope[panjang(ctx.lokal_scope) - 1]
+            ubah top_scope[nama] = benar
+    akhir
+akhir
+
+fungsi cek_lokal(ctx, nama) maka
+    jika panjang(ctx.lokal_scope) > 0 maka
+            biar top_scope = ctx.lokal_scope[panjang(ctx.lokal_scope) - 1]
+            jika top_scope.punya(nama) maka
+                kembali benar
+            akhir
+    akhir
+    kembali salah
+akhir
+
+# Helper baru: dapatkan_jenis_var
+# Mengembalikan "LOCAL", "CELL", "FREE", atau "GLOBAL"
+fungsi dapatkan_jenis_var(ctx, nama) maka
+    # 1. Cek Analisis Info (Prioritas untuk Cell/Free)
+    jika ctx.info_analisis != nil dan ctx.current_func_node != nil maka
+        # Gunakan akses aman jika mungkin
+        coba
+             jika ctx.info_analisis.punya(ctx.current_func_node) maka
+                 biar info = ctx.info_analisis[ctx.current_func_node]
+
+                 # Cek Cell Vars (Definisi di sini, dicapture oleh anak)
+                 biar cell_vars = info["cell"]
+                 # Cek list manual (belum ada helper 'in' yang kuat)
+                 biar i = 0
+                 selama i < panjang(cell_vars) maka
+                     jika cell_vars[i] == nama maka
+                         kembali "CELL"
+                     akhir
+                     ubah i = i + 1
+                 akhir
+
+                 # Cek Free Vars (Definisi di parent, dicapture oleh saya)
+                 biar free_vars = info["free"]
+                 ubah i = 0
+                 selama i < panjang(free_vars) maka
+                     jika free_vars[i] == nama maka
+                         kembali "FREE"
+                     akhir
+                     ubah i = i + 1
+                 akhir
+             akhir
+        tangkap e
+             # Ignore error
+        akhir
+    akhir
+
+    # 2. Cek Lokal (Jika sudah didefinisikan sebelumnya)
+    jika cek_lokal(ctx, nama) maka
+        kembali "LOCAL"
+    akhir
+
+    # 3. Default Global
+    kembali "GLOBAL"
+akhir
+
+fungsi konteks_saat_ini(ctx) maka
+    # tulis("DEBUG CTX: " + teks(ctx))
+    # tulis("DEBUG TUMPUKAN: " + teks(ctx.tumpukan_konteks))
+
+    biar idx = panjang(ctx.tumpukan_konteks) - 1
+    biar k = ctx.tumpukan_konteks[idx]
+    # jika k == nil maka tulis("DEBUG KONTEKS NIL! IDX: " + teks(idx)) akhir
+    kembali k
+akhir
+
+# === Emisi Bytecode ===
+
+fungsi emit(ctx, op, arg) maka
+    biar konteks = konteks_saat_ini(ctx)
+    tambah(konteks["instruksi"], [op, arg])
+    kembali panjang(konteks["instruksi"]) - 1
+akhir
+
+fungsi label_saat_ini(ctx) maka
+    biar konteks = konteks_saat_ini(ctx)
+    kembali panjang(konteks["instruksi"])
+akhir
+
+fungsi emit_jump(ctx, op) maka
+    kembali emit(ctx, op, -1)
+akhir
+
+fungsi patch_jump(ctx, lokasi_jump, target) maka
+    biar konteks = konteks_saat_ini(ctx)
+    biar instruksi = konteks["instruksi"]
+
+    jika target == nil maka
+        ubah target = panjang(instruksi)
+    akhir
+
+    biar instr_lama = instruksi[lokasi_jump]
+    biar op_kode = instr_lama[0]
+    ubah instruksi[lokasi_jump] = [op_kode, target]
+akhir
+
+# === Utilitas ===
+
+fungsi dapatkan_tipe(obj) maka
+    # tulis("DEBUG TIPE FOR: " + teks(obj))
+    coba
+        biar k = obj.__class__
+        # tulis("KLAS: " + teks(k))
+        biar n = k.name
+        # tulis("NAME: " + teks(n))
+        kembali n
+    tangkap e
+        # tulis("FALLBACK TIPE: " + teks(e))
+        kembali tipe_objek(obj)
+    akhir
+akhir

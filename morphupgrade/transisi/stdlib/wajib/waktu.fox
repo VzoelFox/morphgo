@@ -1,0 +1,12 @@
+// File: waktu.fox
+// Deskripsi: Modul standard library untuk operasi waktu dan tanggal.
+
+pinjam "transisi.stdlib.wajib._stdlib_internal" sebagai internal
+
+fungsi tambah_hari(dt_obj, jumlah_hari) maka
+    kembali internal.tambah_hari_ke_datetime(dt_obj, jumlah_hari)
+akhir
+
+fungsi selisih_hari(dt_obj1, dt_obj2) maka
+    kembali internal.selisih_hari_antara_datetime(dt_obj1, dt_obj2)
+akhir
