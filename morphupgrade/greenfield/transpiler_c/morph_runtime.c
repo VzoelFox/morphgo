@@ -46,6 +46,21 @@ void Fox_Print(FoxVal* val) {
         case FOX_INT: printf("%lld", ((FoxInt*)val)->value); break;
         case FOX_BOOL: printf(((FoxBool*)val)->value ? "benar" : "salah"); break;
         case FOX_STRING: printf("%s", ((FoxString*)val)->data); break;
+        case FOX_LIST: {
+            FoxList* l = (FoxList*)val;
+            printf("[");
+            for (size_t i=0; i < l->count; i++) {
+                if (i > 0) printf(", ");
+                // Recursive print hack: call Fox_Print but suppress newline?
+                // For now just print type
+                FoxVal* item = l->elements[i];
+                if (item->type == FOX_INT) printf("%lld", ((FoxInt*)item)->value);
+                else if (item->type == FOX_STRING) printf("'%s'", ((FoxString*)item)->data);
+                else printf("...");
+            }
+            printf("]");
+            break;
+        }
         default: printf("<objek %d>", val->type);
     }
     printf("\n");
@@ -61,6 +76,13 @@ void Fox_DecRef(FoxVal* val) {
     if (val->ref_count <= 0) {
         if (val->type == FOX_STRING) {
             free(((FoxString*)val)->data);
+        }
+        if (val->type == FOX_LIST) {
+            FoxList* l = (FoxList*)val;
+            for (size_t i=0; i<l->count; i++) {
+                Fox_DecRef(l->elements[i]);
+            }
+            free(l->elements);
         }
         if (val != Fox_Nil && val != Fox_True && val != Fox_False) {
             free(val);
@@ -129,4 +151,34 @@ FoxVal* Fox_Gt(FoxVal* a, FoxVal* b) {
         return ((FoxInt*)a)->value > ((FoxInt*)b)->value ? Fox_True : Fox_False;
     }
     return Fox_False;
+}
+
+// --- List API ---
+FoxVal* Fox_List_New(size_t capacity) {
+    FoxList* l = (FoxList*)_alloc_val(sizeof(FoxList), FOX_LIST);
+    l->count = 0;
+    l->capacity = capacity > 0 ? capacity : 4;
+    l->elements = (FoxVal**)malloc(sizeof(FoxVal*) * l->capacity);
+    return (FoxVal*)l;
+}
+
+void Fox_List_Append(FoxVal* list, FoxVal* item) {
+    if (list->type != FOX_LIST) return;
+    FoxList* l = (FoxList*)list;
+    if (l->count >= l->capacity) {
+        l->capacity *= 2;
+        l->elements = (FoxVal**)realloc(l->elements, sizeof(FoxVal*) * l->capacity);
+    }
+    Fox_IncRef(item); // List owns the item now
+    l->elements[l->count++] = item;
+}
+
+FoxVal* Fox_List_Get(FoxVal* list, int index) {
+    if (list->type != FOX_LIST) return Fox_Nil;
+    FoxList* l = (FoxList*)list;
+    if (index < 0 || index >= l->count) return Fox_Nil;
+
+    FoxVal* item = l->elements[index];
+    Fox_IncRef(item); // Return new ref
+    return item;
 }

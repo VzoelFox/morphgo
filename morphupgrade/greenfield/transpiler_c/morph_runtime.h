@@ -43,6 +43,13 @@ typedef struct {
     size_t length;
 } FoxString;
 
+typedef struct {
+    FoxVal base;
+    FoxVal** elements;
+    size_t count;
+    size_t capacity;
+} FoxList;
+
 // --- Global Constants ---
 extern FoxVal* Fox_Nil;
 extern FoxVal* Fox_True;
@@ -69,5 +76,10 @@ FoxVal* Fox_Div(FoxVal* a, FoxVal* b);
 FoxVal* Fox_Eq(FoxVal* a, FoxVal* b);
 FoxVal* Fox_Lt(FoxVal* a, FoxVal* b);
 FoxVal* Fox_Gt(FoxVal* a, FoxVal* b);
+
+// --- List API ---
+FoxVal* Fox_List_New(size_t capacity);
+void Fox_List_Append(FoxVal* list, FoxVal* item);
+FoxVal* Fox_List_Get(FoxVal* list, int index);
 
 #endif

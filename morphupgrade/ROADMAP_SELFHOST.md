@@ -1,6 +1,6 @@
 # Roadmap Self-Host Morph (Transpiler C)
 
-Status: **Phase 1 & 2 Complete (In Progress)**
+Status: **Phase 3 Complete (Partial Phase 4)**
 Target: **Native Binary Compiler**
 
 ## Architecture Baru
@@ -22,13 +22,14 @@ Target: **Native Binary Compiler**
 - [x] Aritmatika (`+`, `-`, `*`, `/`).
 - [x] Kontrol Alur Dasar (`jika`, `selama`).
 
-### Fase 3: Struktur Data & Fungsi (Next)
-- [ ] Tipe List (`[]`) dan Map (`{}`).
-- [ ] Deklarasi Fungsi (`fungsi`).
-- [ ] Panggilan Fungsi (Stack Management).
+### Fase 3: Struktur Data & Fungsi (Selesai)
+- [x] Tipe List (`[]`) via `FoxList`.
+- [x] Deklarasi Fungsi (`fungsi`).
+- [x] Panggilan Fungsi (Mapping ke Fungsi C Native).
+- [ ] Tipe Map (`{}`).
 - [ ] Closure (Lingkup Variabel).
 
-### Fase 4: Sistem Objek (Hard)
+### Fase 4: Sistem Objek (Next)
 - [ ] Kelas & Instance.
 - [ ] Pewarisan.
 - [ ] `ini` context.
