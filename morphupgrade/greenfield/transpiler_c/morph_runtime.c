@@ -82,17 +82,13 @@ void Fox_Print(FoxVal* val) {
             printf("}");
             break;
         }
+        case FOX_FUNCTION: printf("<fungsi %s>", ((FoxFunction*)val)->name); break;
+        case FOX_CLASS: printf("<kelas %s>", ((FoxClass*)val)->name); break;
+        case FOX_INSTANCE: printf("<instance %s>", ((FoxInstance*)val)->klass->name); break;
+        case FOX_BOUND_METHOD: printf("<metode terikat %s>", ((FoxBoundMethod*)val)->func->name); break;
         default: printf("<objek %d>", val->type);
     }
-    // Newline moved to caller or handled explicitly?
-    // Fox_Print usually implies newline.
-    // Recursive calls inside List/Dict should NOT print newline.
-    // Refactor needed: Fox_Print_Raw vs Fox_Print.
-    // For now, I'll remove newline from recursive calls by not calling Fox_Print recursively in List/Dict...
-    // But I called it above. So output will be messy.
-    // Quick fix: Don't print newline in main Fox_Print, only in wrapper?
-    // Or passed `depth` param?
-    // For now, let's just accept messy output for debug.
+    printf("\n");
 }
 
 void Fox_IncRef(FoxVal* val) {
@@ -119,7 +115,7 @@ void Fox_DecRef(FoxVal* val) {
                  FoxMapEntry* e = d->buckets[i];
                  while (e) {
                      FoxMapEntry* next = e->next;
-                     free(e->key); // We own the key copy
+                     free(e->key);
                      Fox_DecRef(e->value);
                      free(e);
                      e = next;
@@ -127,6 +123,22 @@ void Fox_DecRef(FoxVal* val) {
              }
              free(d->buckets);
         }
+        if (val->type == FOX_FUNCTION) {
+            free(((FoxFunction*)val)->name);
+        }
+        if (val->type == FOX_CLASS) {
+            free(((FoxClass*)val)->name);
+            Fox_DecRef(((FoxClass*)val)->methods);
+        }
+        if (val->type == FOX_INSTANCE) {
+            Fox_DecRef((FoxVal*)((FoxInstance*)val)->klass);
+            Fox_DecRef(((FoxInstance*)val)->fields);
+        }
+        if (val->type == FOX_BOUND_METHOD) {
+            Fox_DecRef((FoxVal*)((FoxBoundMethod*)val)->instance);
+            Fox_DecRef((FoxVal*)((FoxBoundMethod*)val)->func);
+        }
+
         if (val != Fox_Nil && val != Fox_True && val != Fox_False) {
             free(val);
         }
@@ -144,6 +156,17 @@ bool Fox_IsTrue(FoxVal* val) {
 FoxVal* Fox_Add(FoxVal* a, FoxVal* b) {
     if (a->type == FOX_INT && b->type == FOX_INT) {
         return Fox_Int_New(((FoxInt*)a)->value + ((FoxInt*)b)->value);
+    }
+    if (a->type == FOX_STRING && b->type == FOX_STRING) {
+        FoxString* sa = (FoxString*)a;
+        FoxString* sb = (FoxString*)b;
+        size_t len = sa->length + sb->length;
+        char* new_str = malloc(len + 1);
+        strcpy(new_str, sa->data);
+        strcat(new_str, sb->data);
+        FoxVal* res = (FoxVal*)Fox_String_New(new_str);
+        free(new_str);
+        return res;
     }
     return Fox_Nil;
 }
@@ -228,7 +251,7 @@ FoxVal* Fox_Dict_New() {
 
 void Fox_Dict_Set(FoxVal* dict, FoxVal* key, FoxVal* value) {
     if (dict->type != FOX_DICT) return;
-    if (key->type != FOX_STRING) return; // Only string keys supported
+    if (key->type != FOX_STRING) return;
 
     FoxDict* d = (FoxDict*)dict;
     char* k = ((FoxString*)key)->data;
@@ -238,7 +261,6 @@ void Fox_Dict_Set(FoxVal* dict, FoxVal* key, FoxVal* value) {
     FoxMapEntry* e = d->buckets[idx];
     while (e) {
         if (strcmp(e->key, k) == 0) {
-            // Update
             Fox_DecRef(e->value);
             Fox_IncRef(value);
             e->value = value;
@@ -247,7 +269,6 @@ void Fox_Dict_Set(FoxVal* dict, FoxVal* key, FoxVal* value) {
         e = e->next;
     }
 
-    // Insert new
     FoxMapEntry* new_entry = (FoxMapEntry*)malloc(sizeof(FoxMapEntry));
     new_entry->key = strdup(k);
     new_entry->value = value;
@@ -277,6 +298,105 @@ FoxVal* Fox_Dict_Get(FoxVal* dict, FoxVal* key) {
     return Fox_Nil;
 }
 
+// --- Object API ---
+
+FoxVal* Fox_Function_New(FoxCFunc func, const char* name) {
+    FoxFunction* f = (FoxFunction*)_alloc_val(sizeof(FoxFunction), FOX_FUNCTION);
+    f->func_ptr = func;
+    f->name = strdup(name);
+    return (FoxVal*)f;
+}
+
+FoxVal* Fox_Class_New(const char* name) {
+    FoxClass* c = (FoxClass*)_alloc_val(sizeof(FoxClass), FOX_CLASS);
+    c->name = strdup(name);
+    c->methods = Fox_Dict_New();
+    return (FoxVal*)c;
+}
+
+void Fox_Class_AddMethod(FoxVal* klass, const char* name, FoxVal* func) {
+    if (klass->type != FOX_CLASS) return;
+    FoxVal* key = Fox_String_New(name);
+    Fox_Dict_Set(((FoxClass*)klass)->methods, key, func);
+    Fox_DecRef(key);
+}
+
+FoxVal* Fox_Instance_New(FoxVal* klass) {
+    if (klass->type != FOX_CLASS) return Fox_Nil;
+    FoxInstance* i = (FoxInstance*)_alloc_val(sizeof(FoxInstance), FOX_INSTANCE);
+    i->klass = (FoxClass*)klass;
+    Fox_IncRef(klass);
+    i->fields = Fox_Dict_New();
+    return (FoxVal*)i;
+}
+
+FoxVal* Fox_GetAttr(FoxVal* obj, const char* name) {
+    if (obj->type == FOX_INSTANCE) {
+        FoxInstance* i = (FoxInstance*)obj;
+        FoxVal* key = Fox_String_New(name);
+
+        // 1. Check fields
+        FoxVal* val = Fox_Dict_Get(i->fields, key);
+        if (val != Fox_Nil) {
+            Fox_DecRef(key);
+            return val; // Get returns New Ref
+        }
+
+        // 2. Check class methods
+        FoxVal* method = Fox_Dict_Get(i->klass->methods, key);
+        Fox_DecRef(key);
+
+        if (method != Fox_Nil && method->type == FOX_FUNCTION) {
+            // Create Bound Method
+            FoxBoundMethod* bm = (FoxBoundMethod*)_alloc_val(sizeof(FoxBoundMethod), FOX_BOUND_METHOD);
+            bm->instance = i;
+            Fox_IncRef(obj);
+            bm->func = (FoxFunction*)method;
+            // method ref handled by Get
+            return (FoxVal*)bm;
+        }
+
+        return Fox_Nil;
+    }
+    return Fox_Nil;
+}
+
+void Fox_SetAttr(FoxVal* obj, const char* name, FoxVal* val) {
+    if (obj->type == FOX_INSTANCE) {
+        FoxInstance* i = (FoxInstance*)obj;
+        FoxVal* key = Fox_String_New(name);
+        Fox_Dict_Set(i->fields, key, val);
+        Fox_DecRef(key);
+    }
+}
+
+FoxVal* Fox_Call(FoxVal* callable, int argc, FoxVal** argv) {
+    if (callable->type == FOX_FUNCTION) {
+        FoxFunction* f = (FoxFunction*)callable;
+        return f->func_ptr(argc, argv);
+    }
+
+    if (callable->type == FOX_CLASS) {
+        // Constructor
+        return Fox_Instance_New(callable);
+    }
+
+    if (callable->type == FOX_BOUND_METHOD) {
+        FoxBoundMethod* bm = (FoxBoundMethod*)callable;
+        // Prepend 'ini' (instance) to argv
+        // We need a new argv array
+        FoxVal** new_argv = (FoxVal**)malloc(sizeof(FoxVal*) * (argc + 1));
+        new_argv[0] = (FoxVal*)bm->instance;
+        for (int i=0; i<argc; i++) new_argv[i+1] = argv[i];
+
+        FoxVal* res = bm->func->func_ptr(argc + 1, new_argv);
+        free(new_argv);
+        return res;
+    }
+
+    return Fox_Nil;
+}
+
 // --- Generic Access ---
 FoxVal* Fox_GetItem(FoxVal* obj, FoxVal* key) {
     if (obj->type == FOX_LIST) {
@@ -294,5 +414,4 @@ void Fox_SetItem(FoxVal* obj, FoxVal* key, FoxVal* val) {
      if (obj->type == FOX_DICT) {
          Fox_Dict_Set(obj, key, val);
      }
-     // List set item? TODO
 }

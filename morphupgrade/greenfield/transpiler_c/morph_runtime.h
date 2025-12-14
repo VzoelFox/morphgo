@@ -14,7 +14,11 @@ typedef enum {
     FOX_STRING,
     FOX_BOOL,
     FOX_LIST,
-    FOX_DICT
+    FOX_DICT,
+    FOX_FUNCTION,    // C Function Wrapper
+    FOX_CLASS,
+    FOX_INSTANCE,
+    FOX_BOUND_METHOD // (instance + function)
 } FoxType;
 
 typedef struct FoxVal {
@@ -52,8 +56,7 @@ typedef struct {
 
 // Hash Map Entry
 typedef struct FoxMapEntry {
-    char* key; // Optimization: String keys only for now (common in compiler)
-               // TODO: Support arbitrary keys
+    char* key;
     FoxVal* value;
     struct FoxMapEntry* next;
 } FoxMapEntry;
@@ -64,6 +67,35 @@ typedef struct {
     size_t bucket_count;
     size_t item_count;
 } FoxDict;
+
+// --- Function & Class Types ---
+
+// Generic Function Pointer Type
+typedef FoxVal* (*FoxCFunc)(int argc, FoxVal** argv);
+
+typedef struct {
+    FoxVal base;
+    FoxCFunc func_ptr;
+    char* name;
+} FoxFunction;
+
+typedef struct {
+    FoxVal base;
+    char* name;
+    FoxVal* methods; // FoxDict
+} FoxClass;
+
+typedef struct {
+    FoxVal base;
+    FoxClass* klass;
+    FoxVal* fields; // FoxDict
+} FoxInstance;
+
+typedef struct {
+    FoxVal base;
+    FoxInstance* instance;
+    FoxFunction* func;
+} FoxBoundMethod;
 
 // --- Global Constants ---
 extern FoxVal* Fox_Nil;
@@ -103,6 +135,15 @@ FoxVal* Fox_List_Get(FoxVal* list, int index);
 FoxVal* Fox_Dict_New();
 void Fox_Dict_Set(FoxVal* dict, FoxVal* key, FoxVal* value);
 FoxVal* Fox_Dict_Get(FoxVal* dict, FoxVal* key);
+
+// --- Object API ---
+FoxVal* Fox_Function_New(FoxCFunc func, const char* name);
+FoxVal* Fox_Class_New(const char* name);
+void Fox_Class_AddMethod(FoxVal* klass, const char* name, FoxVal* func);
+FoxVal* Fox_Instance_New(FoxVal* klass);
+FoxVal* Fox_GetAttr(FoxVal* obj, const char* name);
+void Fox_SetAttr(FoxVal* obj, const char* name, FoxVal* val);
+FoxVal* Fox_Call(FoxVal* callable, int argc, FoxVal** argv);
 
 // --- Generic Access ---
 FoxVal* Fox_GetItem(FoxVal* obj, FoxVal* key);

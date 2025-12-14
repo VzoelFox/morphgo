@@ -1,6 +1,6 @@
 # Roadmap Self-Host Morph (Transpiler C)
 
-Status: **Phase 3.5 Complete (Dictionary Implemented)**
+Status: **Phase 4 Complete (Object System Implemented)**
 Target: **Native Binary Compiler**
 
 ## Architecture Baru
@@ -19,22 +19,25 @@ Target: **Native Binary Compiler**
 ### Fase 2: Fitur Dasar (Selesai)
 - [x] Output Teks (`tulis`).
 - [x] Variabel (`biar`, `ubah`).
-- [x] Aritmatika (`+`, `-`, `*`, `/`).
+- [x] Aritmatika (`+`, `-`, `*`, `/`) termasuk String Concat.
 - [x] Kontrol Alur Dasar (`jika`, `selama`).
 
 ### Fase 3: Struktur Data & Fungsi (Selesai)
 - [x] Tipe List (`[]`) via `FoxList`.
 - [x] Tipe Map (`{}`) via `FoxDict` (Hash Map).
 - [x] Deklarasi Fungsi (`fungsi`).
-- [x] Panggilan Fungsi (Mapping ke Fungsi C Native).
-- [ ] Closure (Lingkup Variabel).
+- [x] Panggilan Fungsi (Generic `Fox_Call`).
+- [ ] Closure (Lingkup Variabel - Masih Global/Local sederhana).
 
-### Fase 4: Sistem Objek (Next)
-- [ ] Kelas & Instance.
-- [ ] Pewarisan.
-- [ ] `ini` context.
+### Fase 4: Sistem Objek (Selesai)
+- [x] Kelas & Instance (`FoxClass`, `FoxInstance`).
+- [x] Pewarisan (Belum diimplementasikan, tapi struktur sudah ada).
+- [x] `ini` context (Bound Method).
+- [x] Akses Properti (`.`).
 
 ### Fase 5: Self-Compilation (The Goal)
+- [ ] Implementasi `CobaTangkap` (Exception Handling).
+- [ ] Implementasi `Jodohkan` (Pattern Matching).
 - [ ] Transpile `greenfield/kompiler/*.fox` menggunakan `ivm`.
 - [ ] Hasilnya (`compiler.c`) dicompile dengan GCC.
 - [ ] Binary `compiler_native` dihasilkan.

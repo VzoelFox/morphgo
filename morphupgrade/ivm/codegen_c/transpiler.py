@@ -57,35 +57,60 @@ class CTranspiler:
             else:
                 self.visit(stmt)
 
-    def visit_FungsiDeklarasi(self, node):
-        func_name = f"fox_user_{node.nama.nilai}"
-        params = [f"FoxVal* {p.nilai}" for p in node.parameter]
-        param_str = ", ".join(params)
+    def _compile_function_body(self, node, raw_name, class_name=None):
+        params = [p.nilai for p in node.parameter]
 
-        self.headers.append(f"FoxVal* {func_name}({param_str});")
+        self.headers.append(f"FoxVal* {raw_name}(int argc, FoxVal** argv);")
 
         prev_buffer = self.current_buffer
         self.current_buffer = self.functions
         self.indent_level = 0
 
-        self.write(f"FoxVal* {func_name}({param_str}) {{")
+        self.write(f"FoxVal* {raw_name}(int argc, FoxVal** argv) {{")
         self.indent_level += 1
 
         old_locals = self.locals.copy()
         self.locals = set()
-        for p in node.parameter:
-            self.locals.add(p.nilai)
+
+        arg_idx = 0
+        if class_name:
+            self.locals.add("ini")
+            self.write(f"FoxVal* ini = (argc > {arg_idx}) ? argv[{arg_idx}] : Fox_Nil;")
+            arg_idx += 1
+
+        for p_name in params:
+            self.locals.add(p_name)
+            self.write(f"FoxVal* {p_name} = (argc > {arg_idx}) ? argv[{arg_idx}] : Fox_Nil;")
+            arg_idx += 1
 
         self.visit(node.badan)
 
         self.write("return Fox_Nil;")
-
         self.indent_level -= 1
         self.write("}")
         self.write("")
 
         self.current_buffer = prev_buffer
         self.locals = old_locals
+
+    def visit_FungsiDeklarasi(self, node):
+        raw_name = f"impl_{node.nama.nilai}"
+        self._compile_function_body(node, raw_name)
+
+        var_name = node.nama.nilai
+        self.locals.add(var_name)
+        self.write(f'FoxVal* {var_name} = Fox_Function_New({raw_name}, "{var_name}");')
+
+    def visit_Kelas(self, node):
+        class_name = node.nama.nilai
+        self.locals.add(class_name)
+        self.write(f'FoxVal* {class_name} = Fox_Class_New("{class_name}");')
+
+        for method in node.metode:
+            method_name = method.nama.nilai
+            raw_method_name = f"impl_{class_name}_{method_name}"
+            self._compile_function_body(method, raw_method_name, class_name=class_name)
+            self.write(f'Fox_Class_AddMethod({class_name}, "{method_name}", Fox_Function_New({raw_method_name}, "{method_name}"));')
 
     def visit_PernyataanKembalikan(self, node):
         if node.nilai:
@@ -118,11 +143,18 @@ class CTranspiler:
 
     def visit_Assignment(self, node):
         if node.target.__class__.__name__ == 'Akses':
-            obj = self.visit_expression(node.target.objek)
-            key = self.visit_expression(node.target.kunci)
-            val = self.visit_expression(node.nilai)
-            self.write(f'Fox_SetItem({obj}, {key}, {val});')
-            return
+             obj = self.visit_expression(node.target.objek)
+             key = self.visit_expression(node.target.kunci)
+             val = self.visit_expression(node.nilai)
+             self.write(f'Fox_SetItem({obj}, {key}, {val});')
+             return
+
+        if node.target.__class__.__name__ == 'AmbilProperti':
+             obj = self.visit_expression(node.target.objek)
+             prop_name = node.target.nama.nilai
+             val = self.visit_expression(node.nilai)
+             self.write(f'Fox_SetAttr({obj}, "{prop_name}", {val});')
+             return
 
         var_name = node.target.nama
         val_expr = self.visit_expression(node.nilai)
@@ -169,13 +201,18 @@ class CTranspiler:
          raise NotImplementedError(f"Expression not supported: {node.__class__.__name__}")
 
     def visit_PanggilFungsi(self, node):
-        if node.callee.__class__.__name__ == 'Identitas':
-            func_name = f"fox_user_{node.callee.nama}"
-            args = [self.visit_expression(a) for a in node.argumen]
-            arg_str = ", ".join(args)
-            return f"{func_name}({arg_str})"
+        callee = self.visit_expression(node.callee)
+        count = len(node.argumen)
+
+        args_var = self.get_temp_var()
+        if count > 0:
+            self.write(f"FoxVal* {args_var}[{count}];")
+            for i, arg in enumerate(node.argumen):
+                val = self.visit_expression(arg)
+                self.write(f"{args_var}[{i}] = {val};")
+            return f"Fox_Call({callee}, {count}, {args_var})"
         else:
-             raise NotImplementedError("Dynamic function call not supported yet")
+            return f"Fox_Call({callee}, 0, NULL)"
 
     def visit_expr_Konstanta(self, node):
         val = node.nilai
@@ -187,6 +224,9 @@ class CTranspiler:
 
     def visit_expr_Identitas(self, node):
         return node.nama
+
+    def visit_expr_Ini(self, node):
+        return "ini"
 
     def visit_expr_Daftar(self, node):
         count = len(node.elemen)
@@ -210,6 +250,11 @@ class CTranspiler:
         obj = self.visit_expression(node.objek)
         key = self.visit_expression(node.kunci)
         return f"Fox_GetItem({obj}, {key})"
+
+    def visit_expr_AmbilProperti(self, node):
+        obj = self.visit_expression(node.objek)
+        prop_name = node.nama.nilai
+        return f"Fox_GetAttr({obj}, \"{prop_name}\")"
 
     def visit_expr_FoxBinary(self, node):
         left = self.visit_expression(node.kiri)
